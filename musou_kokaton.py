@@ -48,6 +48,8 @@ class Bird(pg.sprite.Sprite):
         pg.K_LEFT: (-1, 0),
         pg.K_RIGHT: (+1, 0),
     }
+    state = ""
+    hyper_life = 0
 
     def __init__(self, num: int, xy: tuple[int, int], base_speed: int = 10):
         super().__init__()
@@ -99,6 +101,18 @@ class Bird(pg.sprite.Sprite):
             if key_lst[k]:
                 sum_mv[0] += mv[0]
                 sum_mv[1] += mv[1]
+        self.rect.move_ip(self.speed*sum_mv[0], self.speed*sum_mv[1])
+        if check_bound(self.rect) != (True, True):
+            self.rect.move_ip(-self.speed*sum_mv[0], -self.speed*sum_mv[1])
+        if not (sum_mv[0] == 0 and sum_mv[1] == 0):
+            self.dire = tuple(sum_mv)
+            self.image = self.imgs[self.dire]
+        if self.state == "hyper":
+            self.image = pg.transform.laplacian(self.image)
+            self.hyper_life -= 1
+        if self.hyper_life < 0:
+            self.state = "normal"
+        screen.blit(self.image, self.rect)
 
         # 移動（整数で渡すことを推奨）
         dx = int(cur_speed * sum_mv[0])
@@ -376,11 +390,8 @@ def main():
     beams = pg.sprite.Group()
     exps = pg.sprite.Group()
     emys = pg.sprite.Group()
-<<<<<<< HEAD
     gravity_group = pg.sprite.Group()
-=======
     shields = pg.sprite.Group()  # ★ADDED
->>>>>>> C0A24027/feature5
 
     tmr = 0
     clock = pg.time.Clock()
@@ -399,23 +410,30 @@ def main():
                     beams.add(Beam(bird))
             if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
                 beams.add(Beam(bird))
-<<<<<<< HEAD
+
             if event.type == pg.KEYDOWN and (event.key == pg.K_RETURN or event.key == pg.K_KP_ENTER):
                 # 既に重力場が無いこと、かつスコアが200以上なら発動
                 if score.value >= 200 and len(gravity_group) == 0:
                     score.value -= 200
                     gravity = Gravity(400, screen.get_rect())  # 400フレーム
                     gravity_group.add(gravity)
-=======
+
             if event.type == pg.KEYDOWN and event.key == pg.K_s:  # ★ADDED: シールド展開
                 if len(shields) == 0 and score.value >= 50:
                     score.value -= 50
                     shields.add(Shield(bird, life=200))
->>>>>>> C0A24027/feature5
+
+            if event.type == pg.KEYDOWN and event.key == pg.K_RSHIFT:
+                if score.value >= 100:
+                    score.value -=100
+                    bird.state = "hyper"
+                    bird.hyper_life = 500
+
         screen.blit(bg_img, [0, 0])
 
         if tmr%200== 0:  # 200フレームに1回，敵機を出現させる
             emys.add(Enemy())
+
 
         for emy in emys:
             if emy.state == "stop" and tmr%emy.interval == 0:
@@ -437,11 +455,15 @@ def main():
             score.value += 1
 
         for bomb in pg.sprite.spritecollide(bird, bombs, True):  # こうかとんと衝突した爆弾リスト
-            bird.change_img(8, screen)  # こうかとん悲しみエフェクト
-            score.update(screen)
-            pg.display.update()
-            time.sleep(2)
-            return
+            if bird.state == "hyper":
+                exps.add(Explosion(bomb, 50))
+                score.value += 1
+            else:
+                bird.change_img(8, screen)  # こうかとん悲しみエフェクト
+                score.update(screen)
+                pg.display.update()
+                time.sleep(2)
+                return
 
         bird.update(key_lst, screen)
         beams.update()
