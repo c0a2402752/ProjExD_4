@@ -40,67 +40,93 @@ def calc_orientation(org: pg.Rect, dst: pg.Rect) -> tuple[float, float]:
 class Bird(pg.sprite.Sprite):
     """
     ゲームキャラクター（こうかとん）に関するクラス
+    SHIFTで加速する実装を含む（元のシグネチャ num, xy を維持）
     """
-    delta = {  # 押下キーと移動量の辞書
+    delta = {  # 押下キーと移動量の辞書（方向ベクトル）
         pg.K_UP: (0, -1),
         pg.K_DOWN: (0, +1),
         pg.K_LEFT: (-1, 0),
         pg.K_RIGHT: (+1, 0),
     }
 
-    def __init__(self, num: int, xy: tuple[int, int]):
-        """
-        こうかとん画像Surfaceを生成する
-        引数1 num：こうかとん画像ファイル名の番号
-        引数2 xy：こうかとん画像の位置座標タプル
-        """
+    def __init__(self, num: int, xy: tuple[int, int], base_speed: int = 10):
         super().__init__()
+        # 画像セットアップ（あなたの元の処理を踏襲）
         img0 = pg.transform.rotozoom(pg.image.load(f"fig/{num}.png"), 0, 0.9)
-        img = pg.transform.flip(img0, True, False)  # デフォルトのこうかとん
+        img = pg.transform.flip(img0, True, False)
         self.imgs = {
-            (+1, 0): img,  # 右
-            (+1, -1): pg.transform.rotozoom(img, 45, 0.9),  # 右上
-            (0, -1): pg.transform.rotozoom(img, 90, 0.9),  # 上
-            (-1, -1): pg.transform.rotozoom(img0, -45, 0.9),  # 左上
-            (-1, 0): img0,  # 左
-            (-1, +1): pg.transform.rotozoom(img0, 45, 0.9),  # 左下
-            (0, +1): pg.transform.rotozoom(img, -90, 0.9),  # 下
-            (+1, +1): pg.transform.rotozoom(img, -45, 0.9),  # 右下
+            (+1, 0): img,
+            (+1, -1): pg.transform.rotozoom(img, 45, 0.9),
+            (0, -1): pg.transform.rotozoom(img, 90, 0.9),
+            (-1, -1): pg.transform.rotozoom(img0, -45, 0.9),
+            (-1, 0): img0,
+            (-1, +1): pg.transform.rotozoom(img0, 45, 0.9),
+            (0, +1): pg.transform.rotozoom(img, -90, 0.9),
+            (+1, +1): pg.transform.rotozoom(img, -45, 0.9),
         }
         self.dire = (+1, 0)
         self.image = self.imgs[self.dire]
+
+        # rect を xy（2要素タプル）で確実に初期化する（TypeError 回避）
+        # xy が不正な場合は例外を出すよりもデフォルト位置に置く選択肢もあるが、
+        # 普通は呼び出し側が正しいはずなのでそのまま使う
         self.rect = self.image.get_rect()
         self.rect.center = xy
-        self.speed = 10
+
+        self.base_speed = base_speed  # 基本速度（通常は 10）
+        self.speed = base_speed
+        
 
     def change_img(self, num: int, screen: pg.Surface):
-        """
-        こうかとん画像を切り替え，画面に転送する
-        引数1 num：こうかとん画像ファイル名の番号
-        引数2 screen：画面Surface
-        """
         self.image = pg.transform.rotozoom(pg.image.load(f"fig/{num}.png"), 0, 0.9)
         screen.blit(self.image, self.rect)
 
     def update(self, key_lst: list[bool], screen: pg.Surface):
         """
-        押下キーに応じてこうかとんを移動させる
-        引数1 key_lst：押下キーの真理値リスト
-        引数2 screen：画面Surface
+        押下キーに応じてこうかとんを移動させる。
+        SHIFT（左右どちらでも）で加速する。
         """
+        # SHIFT 判定（左SHIFT または 右SHIFT）
+        is_shift = key_lst[pg.K_LSHIFT] or key_lst[pg.K_RSHIFT]
+
+        # 加速倍率（必要なら調整）
+        speed_mul = 1.8 if is_shift else 1.0
+        cur_speed = self.base_speed * speed_mul
+
+
         sum_mv = [0, 0]
         for k, mv in __class__.delta.items():
             if key_lst[k]:
                 sum_mv[0] += mv[0]
                 sum_mv[1] += mv[1]
-        self.rect.move_ip(self.speed*sum_mv[0], self.speed*sum_mv[1])
-        if check_bound(self.rect) != (True, True):
-            self.rect.move_ip(-self.speed*sum_mv[0], -self.speed*sum_mv[1])
-        if not (sum_mv[0] == 0 and sum_mv[1] == 0):
-            self.dire = tuple(sum_mv)
-            self.image = self.imgs[self.dire]
-        screen.blit(self.image, self.rect)
 
+        # 移動（整数で渡すことを推奨）
+        dx = int(cur_speed * sum_mv[0])
+        dy = int(cur_speed * sum_mv[1])
+        self.rect.move_ip(dx, dy)
+
+        # 画面外なら移動を戻す
+        if check_bound(self.rect) != (True, True):
+            self.rect.move_ip(-dx, -dy)
+
+        # 向きの更新（0,0 は無視）
+        if not (sum_mv[0] == 0 and sum_mv[1] == 0):
+            # 正規化された方向ベクトル（小数でよい）
+            mvx, mvy = sum_mv[0], sum_mv[1]
+            norm = (mvx**2 + mvy**2) ** 0.5
+            if norm != 0:
+                self.dire = (mvx / norm, mvy / norm)
+            # 見た目の切替は元の辞書から
+            # ただし sum_mv は例えば (2,0) のように合算されうるので、方向を整数に戻す
+            dir_key = (int((sum_mv[0] > 0) - (sum_mv[0] < 0)),
+                       int((sum_mv[1] > 0) - (sum_mv[1] < 0)))
+            # dir_key が (0,0) になる可能性を回避して、既存の dire を使う
+            if dir_key != (0, 0) and dir_key in self.imgs:
+                self.image = self.imgs[dir_key]
+
+        # 画面に描画
+        screen.blit(self.image, self.rect)
+        
 
 class Bomb(pg.sprite.Sprite):
     """
