@@ -141,7 +141,7 @@ class Beam(pg.sprite.Sprite):
     """
     ビームに関するクラス
     """
-    def __init__(self, bird: Bird):
+    def __init__(self, bird: Bird, angle0: float = 0.0):
         """
         ビーム画像Surfaceを生成する
         引数 bird：ビームを放つこうかとん
@@ -149,6 +149,7 @@ class Beam(pg.sprite.Sprite):
         super().__init__()
         self.vx, self.vy = bird.dire
         angle = math.degrees(math.atan2(-self.vy, self.vx))
+        angle = math.degrees(math.atan2(-self.vy, self.vx)) + angle0
         self.image = pg.transform.rotozoom(pg.image.load(f"fig/beam.png"), angle, 1.0)
         self.vx = math.cos(math.radians(angle))
         self.vy = -math.sin(math.radians(angle))
@@ -165,6 +166,15 @@ class Beam(pg.sprite.Sprite):
         self.rect.move_ip(self.speed*self.vx, self.speed*self.vy)
         if check_bound(self.rect) != (True, True):
             self.kill()
+    
+def fire_spread(beams_group: pg.sprite.Group, bird: Bird, n: int = 7, spread_deg: float = 60.0): 
+       if n <= 1:
+           beams_group.add(Beam(bird))
+           return
+       start = -spread_deg / 2
+       step = spread_deg / (n - 1)
+       for i in range(n):
+           beams_group.add(Beam(bird, angle0=start + step * i))
 
 
 class Explosion(pg.sprite.Sprite):
@@ -184,6 +194,7 @@ class Explosion(pg.sprite.Sprite):
         self.rect = self.image.get_rect(center=obj.rect.center)
         self.life = life
 
+   
     def update(self):
         """
         爆発時間を1減算した爆発経過時間_lifeに応じて爆発画像を切り替えることで
@@ -261,11 +272,17 @@ def main():
         for event in pg.event.get():
             if event.type == pg.QUIT:
                 return 0
-            if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
-                beams.add(Beam(bird))
+            #if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:
+            #   beams.add(Beam(bird))
+            if event.type == pg.KEYDOWN and event.key == pg.K_SPACE:  # Ctrl+Spaceで弾幕
+                mods = pg.key.get_mods()
+                if mods & pg.KMOD_CTRL:
+                    fire_spread(beams, bird, n=10 , spread_deg=360.0)
+                else:
+                    beams.add(Beam(bird))
         screen.blit(bg_img, [0, 0])
 
-        if tmr%200 == 0:  # 200フレームに1回，敵機を出現させる
+        if tmr%200== 0:  # 200フレームに1回，敵機を出現させる
             emys.add(Enemy())
 
         for emy in emys:
